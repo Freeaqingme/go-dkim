@@ -62,7 +62,8 @@ var (
 	// ErrVerifyNoKeyForSignature
 	ErrVerifyNoKeyForSignature = errors.New("no key for verify")
 
-	// ErrVerifyKeyUnavailable when service (dns) is anavailable
+	// ErrVerifyKeyUnavailable when service (dns) is anavailable.
+	// This error may be temporary in some cases.
 	ErrVerifyKeyUnavailable = errors.New("key unavailable")
 
 	// ErrVerifyTagVMustBeTheFirst if present the v tag must be the firts in the record
@@ -88,4 +89,7 @@ var (
 
 	// ErrVerifyInappropriateHashAlgo when h tag in pub key doesn't contain hash algo from a tag of DKIM header
 	ErrVerifyInappropriateHashAlgo = errors.New("inappropriate has algorithm")
+
+	// ErrTesting
+	ErrTesting = errors.New("public key has testing flag set")
 )
