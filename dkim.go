@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"hash"
+	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -24,8 +25,6 @@ const (
 	FWS                 = CRLF + TAB
 	MaxHeaderLineLength = 70
 )
-
-type verifyOutput int
 
 // sigOptions represents signing options
 type SigOptions struct {
@@ -181,26 +180,36 @@ func Sign(email []byte, options SigOptions) ([]byte, error) {
 	return append([]byte(dHeader), email...), nil
 }
 
-func Verify(email []byte) (dkimHeader *DKIMHeader, err error) {
-	// parse email
+func Verify(email []byte, LookupTXT func(string) ([]string, error), now func() time.Time) (dkimHeader *DKIMHeader, err error) {
+	if LookupTXT == nil {
+		LookupTXT = net.LookupTXT
+	}
+	if now == nil {
+		now = time.Now
+	}
+
 	dkimHeader, err = newDkimHeaderFromEmail(email)
 	if err != nil {
 		return
 	}
 
-	// we do not set query method because if it's others, validation failed earlier
-	pubKey, err := newPubKeyFromDnsTxt(dkimHeader.Selector, dkimHeader.Domain)
+	txt, err := LookupTXT(dkimHeader.Selector + "._domainkey." + dkimHeader.Domain)
+	if err != nil {
+		return nil, err
+	}
+	pubKey, err := newPubKeyFromDnsTxt(txt)
 	if err != nil {
 		return nil, err
 	}
 
-	// Normalize
 	headers, body, err := canonicalize(email, dkimHeader.MessageCanonicalization, dkimHeader.Headers)
 	if err != nil {
 		return nil, err
 	}
 	sigHash := strings.Split(dkimHeader.Algorithm, "-")
-	// check if hash algo are compatible
+	if len(sigHash) < 2 {
+		return nil, ErrVerifyInappropriateHashAlgo
+	}
 	compatible := false
 	for _, algo := range pubKey.HashAlgo {
 		if sigHash[1] == algo {
@@ -212,9 +221,10 @@ func Verify(email []byte) (dkimHeader *DKIMHeader, err error) {
 		return nil, ErrVerifyInappropriateHashAlgo
 	}
 
-	// expired ?
-	if !dkimHeader.SignatureExpiration.IsZero() && dkimHeader.SignatureExpiration.Second() < time.Now().Second() {
-		return nil, ErrVerifySignatureHasExpired
+	if !dkimHeader.SignatureExpiration.IsZero() {
+		if dkimHeader.SignatureExpiration.Before(now()) {
+			return nil, ErrVerifySignatureHasExpired
+		}
 	}
 
 	bodyHash, err := getBodyHash(body, sigHash[1], dkimHeader.BodyLength)

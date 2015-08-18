@@ -333,38 +333,38 @@ func Test_Sign(t *testing.T) {
 func Test_Verify(t *testing.T) {
 	// no DKIM header
 	email := []byte(emailBase)
-	_, err := Verify(email)
+	_, err := Verify(email, nil, nil)
 	assert.Equal(t, ErrDkimHeaderNotFound, err)
 
 	// No From
 	email = []byte(signedNoFrom)
-	_, err = Verify(email)
+	_, err = Verify(email, nil, nil)
 	assert.Equal(t, ErrVerifyBodyHash, err)
 
 	// missing mandatory 'a' flag
 	email = []byte(signedMissingFlag)
-	_, err = Verify(email)
+	_, err = Verify(email, nil, nil)
 	assert.Error(t, err)
 	assert.Equal(t, ErrDkimHeaderMissingRequiredTag, err)
 
 	// missing bad algo
 	email = []byte(signedBadAlgo)
-	_, err = Verify(email)
+	_, err = Verify(email, nil, nil)
 	assert.Equal(t, ErrSignBadAlgo, err)
 
 	// relaxed
 	email = []byte(signedRelaxedRelaxedLength)
-	_, err = Verify(email)
+	_, err = Verify(email, nil, nil)
 	assert.Equal(t, ErrTesting, err)
 
 	// simple
 	email = []byte(signedSimpleSimpleLength)
-	_, err = Verify(email)
+	_, err = Verify(email, nil, nil)
 	assert.Equal(t, ErrTesting, err)
 
 	// gmail
 	email = []byte(fromGmail)
-	_, err = Verify(email)
+	_, err = Verify(email, nil, nil)
 	assert.NoError(t, err)
 
 }

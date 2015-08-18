@@ -4,7 +4,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
-	"net"
 	"strings"
 )
 
@@ -20,16 +19,7 @@ type pubKeyRep struct {
 	FlagIMustBeD bool // flag i
 }
 
-func newPubKeyFromDnsTxt(selector, domain string) (*pubKeyRep, error) {
-	txt, err := net.LookupTXT(selector + "._domainkey." + domain)
-	if err != nil {
-		if strings.HasSuffix(err.Error(), "no such host") {
-			return nil, ErrVerifyNoKeyForSignature
-		} else {
-			return nil, ErrVerifyKeyUnavailable
-		}
-	}
-
+func newPubKeyFromDnsTxt(txt []string) (*pubKeyRep, error) {
 	// empty record
 	if len(txt) == 0 {
 		return nil, ErrVerifyNoKeyForSignature
