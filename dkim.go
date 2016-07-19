@@ -14,10 +14,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"hash"
+	"net"
 	"regexp"
 	"strings"
 	"time"
-	"net"
 )
 
 const (
@@ -35,7 +35,7 @@ type dkim struct {
 func NewDkim() *dkim {
 	return &dkim{
 		lookupTXT: net.LookupTXT,
-		now: time.Now,
+		now:       time.Now,
 	}
 }
 
@@ -310,8 +310,6 @@ func (dkim *dkim) Verify(email []byte) (dkimHeader *DKIMHeader, err error) {
 	return
 }
 
-
-
 // canonicalize returns canonicalized version of header and body
 func canonicalize(email []byte, cano string, h []string) (headers, body []byte, err error) {
 	body = []byte{}
@@ -449,7 +447,7 @@ func getBodyHash(body []byte, algo string, bodyLength uint) (string, error) {
 	// if l tag (body length)
 	if bodyLength != 0 {
 		if uint(len(toH)) < bodyLength {
-			return "", ErrBadDKimTagLBodyTooShort
+			bodyLength = uint(len(toH))
 		}
 		toH = toH[0:bodyLength]
 	}

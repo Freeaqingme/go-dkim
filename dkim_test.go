@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -338,6 +338,11 @@ func Test_Sign(t *testing.T) {
 	emailSimple, err = dkim.Sign(emailSimple, options)
 	assert.Equal(t, signedSimpleSimpleLength, string(emailSimple))
 
+	// options.BodyLength is way larger than email body
+	options.BodyLength = 50000
+	emailRelaxed = append([]byte(nil), email...)
+	emailRelaxed, err = dkim.Sign(emailRelaxed, options)
+	assert.NoError(t, err)
 }
 
 func Test_Verify(t *testing.T) {
@@ -456,8 +461,6 @@ func TestYahooIncDKIM(t *testing.T) {
 	dkim.lookupTXT = func(string) ([]string, error) {
 		return []string{"v=DKIM1; g=*; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDGDd1Fz/AblN4d1haW+4B/u8PXkpd/s/JFkCPqp0Zk8xZ/SEs15fsWmj7yZwfsgi04Bs1eJhUIGf0iufHvkK5ws5XKBfbw1hYBHexopqYT5JFERYJ3slNEG5EeB04kKWpECjoMkXhDWvUJrHaBqGAz2KQ1dKAzrtKqRN2IVcDbBQIDAQAB"}, nil
 	}
-	//dkim.now = func() time.Time { return time.Unix(1439925628, 0) }
-	//_, err := dkim.Verify([]byte(yahooIncDKIMtest), yIncTXT, yIncTime)
 	_, err := dkim.Verify([]byte(yahooIncDKIMtest))
 	if err != nil {
 		t.Fatal(err)

@@ -32,9 +32,6 @@ var (
 	// ErrBadMailFormatHeaders bad headers format (not DKIM Header)
 	ErrBadMailFormatHeaders = errors.New("bad mail format found in headers")
 
-	// ErrBadDKimTagLBodyTooShort bad l tag
-	ErrBadDKimTagLBodyTooShort = errors.New("bad tag l or bodyLength option. Body length < l value")
-
 	// ErrDkimHeaderBadFormat when errors found in DKIM header
 	ErrDkimHeaderBadFormat = errors.New("bad DKIM header format")
 
