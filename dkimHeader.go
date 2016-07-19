@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-type dkimHeader struct {
+// DKIMHeader
+type DKIMHeader struct {
 	// Version  This tag defines the version of DKIM
 	// specification that applies to the signature record.
 	// tag v
@@ -99,7 +100,7 @@ type dkimHeader struct {
 	// Internationalized domain names MUST be encoded as A-labels, as
 	// described in Section 2.3 of [RFC5890].
 	// tag i
-	Auid string
+	AUID string
 
 	// Body length count (plain-text unsigned decimal integer; OPTIONAL,
 	// default is entire body).  This tag informs the Verifier of the
@@ -197,14 +198,14 @@ type dkimHeader struct {
 }
 
 // NewDkimHeaderBySigOptions return a new DkimHeader initioalized with sigOptions value
-func newDkimHeaderBySigOptions(options SigOptions) *dkimHeader {
-	h := new(dkimHeader)
+func newDkimHeaderBySigOptions(options SigOptions) *DKIMHeader {
+	h := new(DKIMHeader)
 	h.Version = "1"
 	h.Algorithm = options.Algo
 	h.MessageCanonicalization = options.Canonicalization
 	h.Domain = options.Domain
 	h.Headers = options.Headers
-	h.Auid = options.Auid
+	h.AUID = options.Auid
 	h.BodyLength = options.BodyLength
 	h.QueryMethods = options.QueryMethods
 	h.Selector = options.Selector
@@ -221,8 +222,8 @@ func newDkimHeaderBySigOptions(options SigOptions) *dkimHeader {
 // NewFromEmail return a new DkimHeader by parsing an email
 // Note: according to RFC 6376 an email can have multiple DKIM Header
 // in this case we return the last inserted or the last with d== mail from
-func newDkimHeaderFromEmail(email *[]byte) (*dkimHeader, error) {
-	m, err := mail.ReadMessage(bytes.NewReader(*email))
+func newDkimHeaderFromEmail(email []byte) (*DKIMHeader, error) {
+	m, err := mail.ReadMessage(bytes.NewReader(email))
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +266,7 @@ func newDkimHeaderFromEmail(email *[]byte) (*dkimHeader, error) {
 		}
 	}
 
-	var keep *dkimHeader
+	var keep *DKIMHeader
 	var keepErr error
 	//for _, dk := range m.Header[textproto.CanonicalMIMEHeaderKey("DKIM-Signature")] {
 	for _, h := range dkHeaders {
@@ -291,8 +292,8 @@ func newDkimHeaderFromEmail(email *[]byte) (*dkimHeader, error) {
 }
 
 // parseDkHeader parse raw dkim header
-func parseDkHeader(header string) (dkh *dkimHeader, err error) {
-	dkh = new(dkimHeader)
+func parseDkHeader(header string) (dkh *DKIMHeader, err error) {
+	dkh = new(DKIMHeader)
 
 	keyVal := strings.SplitN(header, ":", 2)
 
@@ -389,7 +390,7 @@ func parseDkHeader(header string) (dkh *dkimHeader, err error) {
 				if !strings.HasSuffix(data, dkh.Domain) {
 					return nil, ErrDkimHeaderDomainMismatch
 				}
-				dkh.Auid = data
+				dkh.AUID = data
 			}
 		case "l":
 			ui, err := strconv.ParseUint(data, 10, 32)
@@ -428,8 +429,8 @@ func parseDkHeader(header string) (dkh *dkimHeader, err error) {
 	}
 
 	// default for i/Auid
-	if dkh.Auid == "" {
-		dkh.Auid = "@" + dkh.Domain
+	if dkh.AUID == "" {
+		dkh.AUID = "@" + dkh.Domain
 	}
 
 	// defaut for query method
@@ -443,7 +444,7 @@ func parseDkHeader(header string) (dkh *dkimHeader, err error) {
 
 // GetHeaderBase return base header for signers
 // Todo: some refactoring needed...
-func (d *dkimHeader) getHeaderBaseForSigning(bodyHash string) string {
+func (d *DKIMHeader) getHeaderBaseForSigning(bodyHash string) string {
 	h := "DKIM-Signature: v=" + d.Version + "; a=" + d.Algorithm + "; q=" + strings.Join(d.QueryMethods, ":") + "; c=" + d.MessageCanonicalization + ";" + CRLF + TAB
 	subh := "s=" + d.Selector + ";"
 	if len(subh)+len(d.Domain)+4 > MaxHeaderLineLength {
@@ -453,12 +454,12 @@ func (d *dkimHeader) getHeaderBaseForSigning(bodyHash string) string {
 	subh += " d=" + d.Domain + ";"
 
 	// Auid
-	if len(d.Auid) != 0 {
-		if len(subh)+len(d.Auid)+4 > MaxHeaderLineLength {
+	if len(d.AUID) != 0 {
+		if len(subh)+len(d.AUID)+4 > MaxHeaderLineLength {
 			h += subh + FWS
 			subh = ""
 		}
-		subh += " i=" + d.Auid + ";"
+		subh += " i=" + d.AUID + ";"
 	}
 
 	/*h := "DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/simple; d=tmail.io; i=@tmail.io;" + FWS
