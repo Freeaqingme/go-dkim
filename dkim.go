@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"hash"
 	"regexp"
 	"strings"
@@ -83,6 +84,22 @@ type SigOptions struct {
 	CopiedHeaderFields []string
 }
 
+type Signer interface {
+	Sign(message []byte, algo string) (string, error)
+}
+
+type DefaultSigner struct {
+	PrivateKey *rsa.PrivateKey
+}
+
+func (s *DefaultSigner) Sign(message []byte, algo string) (string, error) {
+	if s.PrivateKey == nil {
+		return "", errors.New("PrivateKey must be set before signing")
+	}
+
+	return getSignature(message, s.PrivateKey, algo)
+}
+
 // NewSigOptions returns new sigoption with some defaults value
 func NewSigOptions() SigOptions {
 	return SigOptions{
@@ -97,23 +114,27 @@ func NewSigOptions() SigOptions {
 	}
 }
 
-// Sign signs an email
-func Sign(email *[]byte, options SigOptions) error {
-	var privateKey *rsa.PrivateKey
-
-	// PrivateKey
+func getPrivateKeyFromSigOptions(options SigOptions) (*rsa.PrivateKey, error) {
 	if len(options.PrivateKey) == 0 {
-		return ErrSignPrivateKeyRequired
+		return nil, ErrSignPrivateKeyRequired
 	}
 	d, _ := pem.Decode(options.PrivateKey)
 	if d == nil {
-		return ErrCandNotParsePrivateKey
+		return nil, ErrCandNotParsePrivateKey
 	}
 	key, err := x509.ParsePKCS1PrivateKey(d.Bytes)
 	if err != nil {
-		return ErrCandNotParsePrivateKey
+		return nil, ErrCandNotParsePrivateKey
 	}
-	privateKey = key
+	return key, nil
+}
+
+// Sign signs an email
+func Sign(email *[]byte, options SigOptions) error {
+	privateKey, err := getPrivateKeyFromSigOptions(options)
+	if err != nil {
+		return err
+	}
 
 	// Domain required
 	if options.Domain == "" {
@@ -150,36 +171,32 @@ func Sign(email *[]byte, options SigOptions) error {
 		return ErrSignHeaderShouldContainsFrom
 	}
 
-	// Normalize
-	headers, body, err := canonicalize(email, options.Canonicalization, options.Headers)
+	signer := &DefaultSigner{
+		PrivateKey: privateKey,
+	}
+
+	dHeader, err := GetDkimHeader(*email, signer, &options)
 	if err != nil {
 		return err
+	}
+
+	dHeader = "DKIM-Signature: " + dHeader + CRLF
+	*email = append([]byte(dHeader), *email...)
+	return nil
+}
+
+func GetDkimHeader(email []byte, signer Signer, options *SigOptions) (string, error) {
+	headers, dHeader, err := getHashString(email, options)
+	if err != nil {
+		return "", err
 	}
 
 	signHash := strings.Split(options.Algo, "-")
-
-	// hash body
-	bodyHash, err := getBodyHash(&body, signHash[1], options.BodyLength)
+	sig, err := signer.Sign(headers, signHash[1])
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// Get dkim header base
-	dkimHeader := newDkimHeaderBySigOptions(options)
-	dHeader := dkimHeader.getHeaderBaseForSigning(bodyHash)
-
-	canonicalizations := strings.Split(options.Canonicalization, "/")
-	dHeaderCanonicalized, err := canonicalizeHeader(dHeader, canonicalizations[0])
-	if err != nil {
-		return err
-	}
-	headers = append(headers, []byte(dHeaderCanonicalized)...)
-	headers = bytes.TrimRight(headers, " \r\n")
-
-	// sign
-	sig, err := getSignature(&headers, privateKey, signHash[1])
-
-	// add to DKIM-Header
 	subh := ""
 	l := len(subh)
 	for _, c := range sig {
@@ -191,9 +208,36 @@ func Sign(email *[]byte, options SigOptions) error {
 			l = 0
 		}
 	}
-	dHeader += subh + CRLF
-	*email = append([]byte(dHeader), *email...)
-	return nil
+	dHeader += subh
+
+	return dHeader[len("DKIM-Signature: "):], nil
+}
+
+func getHashString(email []byte, options *SigOptions) (headers []byte, dheader string, err error) {
+	headers, body, err := canonicalize(&email, options.Canonicalization, options.Headers)
+	if err != nil {
+		return []byte{}, "", err
+	}
+
+	signHash := strings.Split(options.Algo, "-")
+
+	bodyHash, err := getBodyHash(&body, signHash[1], options.BodyLength)
+	if err != nil {
+		return []byte{}, "", err
+	}
+
+	dkimHeader := newDkimHeaderBySigOptions(*options)
+	dHeader := dkimHeader.getHeaderBaseForSigning(bodyHash)
+
+	canonicalizations := strings.Split(options.Canonicalization, "/")
+	dHeaderCanonicalized, err := canonicalizeHeader(dHeader, canonicalizations[0])
+	if err != nil {
+		return []byte{}, "", err
+	}
+	headers = append(headers, []byte(dHeaderCanonicalized)...)
+	headers = bytes.TrimRight(headers, " \r\n")
+
+	return headers, dHeader, nil
 }
 
 // Verify verifies an email an return
@@ -211,12 +255,11 @@ func Verify(email *[]byte) (verifyOutput, error) {
 	}
 
 	// we do not set query method because if it's others, validation failed earlier
-	pubKey, verifyOutputOnError, err := newPubKeyFromDnsTxt(dkimHeader.Selector, dkimHeader.Domain)
+	pubKeys, verifyOutputOnError, err := PubKeyFromDns(dkimHeader.Selector, dkimHeader.Domain)
 	if err != nil {
-		// fix https://github.com/toorop/go-dkim/issues/1
-		//return getVerifyOutput(verifyOutputOnError, err, pubKey.FlagTesting)
 		return verifyOutputOnError, err
 	}
+	pubKey := pubKeys[0]
 
 	// Normalize
 	headers, body, err := canonicalize(email, dkimHeader.MessageCanonicalization, dkimHeader.Headers)
@@ -239,10 +282,8 @@ func Verify(email *[]byte) (verifyOutput, error) {
 	// expired ?
 	if !dkimHeader.SignatureExpiration.IsZero() && dkimHeader.SignatureExpiration.Second() < time.Now().Second() {
 		return getVerifyOutput(PERMFAIL, ErrVerifySignatureHasExpired, pubKey.FlagTesting)
-
 	}
 
-	//println("|" + string(body) + "|")
 	// get body hash
 	bodyHash, err := getBodyHash(&body, sigHash[1], dkimHeader.BodyLength)
 	if err != nil {
@@ -433,7 +474,7 @@ func getBodyHash(body *[]byte, algo string, bodyLength uint) (string, error) {
 }
 
 // getSignature return signature of toSign using key
-func getSignature(toSign *[]byte, key *rsa.PrivateKey, algo string) (string, error) {
+func getSignature(toSign []byte, key *rsa.PrivateKey, algo string) (string, error) {
 	var h1 hash.Hash
 	var h2 crypto.Hash
 	switch algo {
@@ -450,7 +491,7 @@ func getSignature(toSign *[]byte, key *rsa.PrivateKey, algo string) (string, err
 	}
 
 	// sign
-	h1.Write(*toSign)
+	h1.Write(toSign)
 	sig, err := rsa.SignPKCS1v15(rand.Reader, key, h2, h1.Sum(nil))
 	if err != nil {
 		return "", err

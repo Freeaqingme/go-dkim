@@ -9,7 +9,7 @@ import (
 )
 
 // pubKeyRep represents a parsed version of public key record
-type pubKeyRep struct {
+type PubKey struct {
 	Version      string
 	HashAlgo     []string
 	KeyType      string
@@ -18,9 +18,10 @@ type pubKeyRep struct {
 	ServiceType  []string
 	FlagTesting  bool // flag y
 	FlagIMustBeD bool // flag i
+	Selector     string
 }
 
-func newPubKeyFromDnsTxt(selector, domain string) (*pubKeyRep, verifyOutput, error) {
+func PubKeyFromDns(selector, domain string) ([]*PubKey, verifyOutput, error) {
 	txt, err := net.LookupTXT(selector + "._domainkey." + domain)
 	if err != nil {
 		if strings.HasSuffix(err.Error(), "no such host") {
@@ -35,13 +36,14 @@ func newPubKeyFromDnsTxt(selector, domain string) (*pubKeyRep, verifyOutput, err
 		return nil, PERMFAIL, ErrVerifyNoKeyForSignature
 	}
 
-	pkr := new(pubKeyRep)
+	pkr := new(PubKey)
 	pkr.Version = "DKIM1"
 	pkr.HashAlgo = []string{"sha1", "sha256"}
 	pkr.KeyType = "rsa"
 	pkr.ServiceType = []string{"all"}
 	pkr.FlagTesting = false
 	pkr.FlagIMustBeD = false
+	pkr.Selector = selector
 
 	// parsing, we keep the first record
 	// TODO: if there is multiple record
@@ -123,5 +125,5 @@ func newPubKeyFromDnsTxt(selector, domain string) (*pubKeyRep, verifyOutput, err
 		return nil, PERMFAIL, ErrVerifyNoKey
 	}
 
-	return pkr, SUCCESS, nil
+	return []*PubKey{pkr}, SUCCESS, nil
 }
