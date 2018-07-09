@@ -226,6 +226,11 @@ func getHashString(email []byte, options *SigOptions) (headers []byte, dheader s
 		return []byte{}, "", err
 	}
 
+	headersToSign, err := getSignableHeaders(headers, options.Headers)
+	if err == nil {
+		options.Headers = headersToSign
+	}
+
 	dkimHeader := newDkimHeaderBySigOptions(*options)
 	dHeader := dkimHeader.getHeaderBaseForSigning(bodyHash)
 
@@ -238,6 +243,39 @@ func getHashString(email []byte, options *SigOptions) (headers []byte, dheader s
 	headers = bytes.TrimRight(headers, " \r\n")
 
 	return headers, dHeader, nil
+}
+
+func getSignableHeaders(presentHeader []byte, headersToSign []string) (signableHeaders []string, err error) {
+	signableHeaders = make([]string, 0)
+
+	s := string(presentHeader)
+	lines := strings.Split(s, CRLF)
+
+	isSignableLookupMap := make(map[string]bool, 0)
+	for _, h := range headersToSign {
+		isSignableLookupMap[h] = true
+	}
+
+	for _, header := range lines {
+		headerString := string(header)
+		if len(headerString) == 0 || header[0] == 32 || header[0] == 9 {
+			continue
+		}
+
+		headerParts := strings.SplitN(headerString, ":", 2)
+		if len(headerParts) != 2 {
+			err = ErrBadMailFormatHeaders
+			return
+		}
+
+		headerKey := strings.ToLower(headerParts[0])
+
+		if isSignableLookupMap[headerKey] {
+			signableHeaders = append(signableHeaders, headerKey)
+		}
+	}
+
+	return
 }
 
 // Verify verifies an email an return
