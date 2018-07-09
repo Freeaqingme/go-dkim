@@ -307,7 +307,7 @@ func Test_Sign(t *testing.T) {
 	options.Domain = domain
 	options.Selector = selector
 	//options.SignatureExpireIn = 3600
-	options.Headers = []string{"from", "date", "mime-version", "received", "received"}
+	options.Headers = []string{"from", "date", "mime-version", "received", "received", "cc"}
 	options.AddSignatureTimestamp = false
 
 	options.Canonicalization = "relaxed/relaxed"
